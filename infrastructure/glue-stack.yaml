@@ -1,0 +1,12 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Resources:
+  CFNDefaultDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: buildonaws
+        Description: Default Database to hold data for the tutorial
+
+

@@ -1,0 +1,163 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Description: Name of the S3 bucket to create
+  SageMakerDomainName:
+    Type: String
+    Description: Name of the SageMaker domain to create
+  GitHubRepo:
+    Type: String
+    Description: URL of the GitHub repository to clone
+    Default: "https://github.com/pkamra/recommendation-engine-full-stack"
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet ID for the SageMaker domain
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID for the SageMaker domain
+
+Resources:
+
+  CustomDeletionFunctionLambdaRole:
+      Type: 'AWS::IAM::Role'
+      Properties:
+        # RoleName: !Sub 'CustomDeletionFunctionLambdaRole-${AWS::StackName}'
+        RoleName: 'CustDelFnRole-BuildOnAWS'
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: 'sts:AssumeRole'
+        ManagedPolicyArns:
+          - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+          - 'arn:aws:iam::aws:policy/AmazonSageMakerFullAccess'
+          - 'arn:aws:iam::aws:policy/AmazonElasticFileSystemFullAccess'
+          - 'arn:aws:iam::aws:policy/AdministratorAccess'
+
+  CustomDeletionFunction:
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      ServiceToken: !GetAtt CustomDeletionFunctionLambda.Arn
+      DomainName: !Ref SageMakerDomainName
+
+  CustomDeletionFunctionLambda:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: DeleteAppsAndEFSLambda4
+      Runtime: python3.8
+      Handler: index.lambda_handler
+      Role: !GetAtt CustomDeletionFunctionLambdaRole.Arn
+      Timeout: 900
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          import time
+
+          def get_domain_id(domain_name):
+              sagemaker = boto3.client('sagemaker')
+              response = sagemaker.list_domains()
+              print('response ::')
+              print(response)
+              domains = response['Domains']
+              
+              for domain in domains:
+                  if domain['DomainName'] == domain_name:
+                      print("Found domain")
+                      print(domain['DomainId'])
+                      return domain['DomainId']
+              
+              return None
+
+          def delete_apps_and_efs(domain_name):
+              domain_id = get_domain_id(domain_name)
+              
+              if domain_id is None:
+                  return
+              
+              sagemaker = boto3.client('sagemaker')
+              response = sagemaker.list_apps(DomainIdEquals=domain_id)
+              print('Response from APPS Found an APP !!!! ::')
+              apps = response['Apps']
+              
+              for app in apps:
+                  if app['Status'] != 'Deleted':
+                      print("Deleting::")
+                      sagemaker.delete_app(DomainId=domain_id, UserProfileName=app['UserProfileName'], AppType=app['AppType'], AppName=app['AppName'])
+              
+              # Wait for the apps to stop
+              time.sleep(300)  # Wait for 10 minutes
+              
+              efs = boto3.client('efs')
+              response = efs.describe_file_systems()
+              print("Response from EFS")
+              print(response)
+              file_systems = response['FileSystems']
+              
+              for file_system in file_systems:
+                  if file_system.get('Tags') and any(tag['Key'] == 'ManagedByAmazonSageMakerResource' and domain_id in tag['Value'] for tag in file_system['Tags']):
+                      print("Time to Delete EFS::")
+                      # Delete mount targets
+                      response = efs.describe_mount_targets(FileSystemId=file_system['FileSystemId'])
+                      mount_targets = response['MountTargets']
+                  
+                      for mount_target in mount_targets:
+                          print("Delete mount target ::")
+                          efs.delete_mount_target(MountTargetId=mount_target['MountTargetId'])
+
+                      # Wait for the mount targets to be deleted
+                      time.sleep(60)  # Wait for 1 minute
+                  
+                      # Delete file system
+                      efs.delete_file_system(FileSystemId=file_system['FileSystemId'])
+
+          def lambda_handler(event, context):
+              domain_name = event['ResourceProperties']['DomainName']
+              
+              if event['RequestType'] == 'Create':
+                  # Handle create event
+                  print("Just creating, nothing to do")
+                  try:
+                      # Perform necessary actions for create
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                  except Exception as e:
+                      print(e)
+                      cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": str(e)})
+              
+              elif event['RequestType'] == 'Update':
+                  # Handle update event
+                  print("Just updating, nothing to do")
+                  try:
+                      # Perform necessary actions for update
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                  except Exception as e:
+                      print(e)
+                      cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": str(e)})
+              
+              elif event['RequestType'] == 'Delete':
+                  # Handle delete event
+                  print("Deleting, manage deletion dependency")
+                  try:
+                      delete_apps_and_efs(domain_name)
+                      
+                      # Perform necessary actions for delete
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                  except Exception as e:
+                      print(e)
+                      cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": str(e)})
+
+
+Outputs:
+  CustomDeletionFunctionLambdaArn:
+    Value: !GetAtt CustomDeletionFunctionLambda.Arn
+    Description: ARN of the Custom Deletion Lambda function
+  SageMakerDomainName:
+    Value: !Ref SageMakerDomainName
+    Description: Name of the SageMaker domain
+  CustomDeletionFunctionRoleArn:
+    Value: !GetAtt CustomDeletionFunctionLambdaRole.Arn
+    Description: ARN of the role associated with the Custom Deletion Lambda function

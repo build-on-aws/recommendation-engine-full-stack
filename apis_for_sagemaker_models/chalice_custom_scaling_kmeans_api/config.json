@@ -1,0 +1,13 @@
+{
+    "version": "2.0",
+    "automatic_layer": true,
+    "manage_iam_role": false,
+    "iam_role_arn": "arn:aws:iam::XXXX:role/Cloud9_LambdaExecutionRole",
+    "app_name": "sagemaker-apigateway-lambda-chalice",
+    "stages": {
+      "dev": {
+        "api_gateway_stage": "api"
+      }
+    }
+  }
+  

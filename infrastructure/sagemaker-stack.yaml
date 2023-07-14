@@ -1,0 +1,75 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Description: Name of the S3 bucket to create
+  SageMakerDomainName:
+    Type: String
+    Description: Name of the SageMaker domain to create
+  GitHubRepo:
+    Type: String
+    Description: URL of the GitHub repository to clone
+    Default: "https://github.com/pkamra/recommendation-engine-full-stack"
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet ID for the SageMaker domain
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID for the SageMaker domain
+
+Resources:
+
+  SageMakerDomain:
+    Type: AWS::SageMaker::Domain
+    Properties:
+      DomainName: !Ref SageMakerDomainName
+      AuthMode: IAM
+      DefaultUserSettings:
+        ExecutionRole: !GetAtt SageMakerUserProfileRole.Arn
+      SubnetIds:
+        - !Ref SubnetId
+      VpcId: !Ref VpcId
+
+  SageMakerUserProfile:
+    Type: AWS::SageMaker::UserProfile
+    Properties:
+      DomainId: !Ref SageMakerDomain
+      UserProfileName: DefaultUserProfile
+      UserSettings:
+        ExecutionRole: !GetAtt SageMakerUserProfileRole.Arn
+
+  SageMakerUserProfileRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "SageMakerUserProfileRole-BuildOnAWS"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sagemaker.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSageMakerFullAccess
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      Policies:
+        - PolicyName: CustomSageMakerPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sagemaker:*
+                Resource: "*"
+
+Outputs:
+  SageMakerUserProfileRoleOutput:
+    Value: !GetAtt SageMakerUserProfileRole.Arn
+    Description: ARN of the IAM role associated with the SageMaker User Profile
+  SageMakerDomainIdOutput:
+    Value: !Ref SageMakerDomain
+    Description: ID of the SageMaker Domain
+  SageMakerDomainJupyterURLOutput:
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/sagemaker/home?region=${AWS::Region}#/studio/open/${SageMakerDomain}/defaultuserprofile"
+    Description: Jupyter URL of the SageMaker Domain

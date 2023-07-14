@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Description: Name of the S3 bucket to create where all data will be stored python notebooks 
+    Default: ""
+  SageMakerDomainName:
+    Type: String
+    Description: Name of the SageMaker domain to create
+    Default: "buildonaws"
+  GitHubRepo:
+    Type: String
+    Description: URL of the GitHub repository to clone
+    Default: "https://github.com/build-on-aws/recommendation-engine-full-stack"
+  VpcStackName:
+    Type: String
+    Description: Name of the VPC stack
+    Default: "MyBuildOnAWSVPC"
+  VpcRegion:
+    Type: String
+    Description: AWS Region for VPC creation
+    Default: "us-east-1"
+  ImageId:
+    Type: String
+    Description: Amazon Linux 2023 AMI for the correct region
+    Default: "ami-06ca3ca175f37dd66"
+  KeyName:
+    Type: String
+    Description: SSH Key Name for troubleshooting purpose
+    Default: ""
+
+Resources:
+  CodeS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+
+  VPCStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: vpc-stack.yaml
+      Parameters:
+        VpcName: MyVPC
+        VpcRegion: !Ref VpcRegion
+        VpcStackName: !Ref VpcStackName
+
+  InstanceStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: VPCStack
+    Properties:
+      TemplateURL: instance-stack.yaml
+      Parameters:
+        S3BucketName: !Ref S3BucketName
+        GitHubRepo: !Ref GitHubRepo
+        SubnetId: !GetAtt VPCStack.Outputs.SubnetId
+        SecurityGroupId: !GetAtt VPCStack.Outputs.SecurityGroupId
+        KeyName: !Ref KeyName
+        ImageId: !Ref ImageId
+
+  SageMakerStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: InstanceStack
+    Properties:
+      TemplateURL: sagemaker-stack.yaml
+      Parameters:
+        S3BucketName: !Ref S3BucketName
+        SageMakerDomainName: !Ref SageMakerDomainName
+        GitHubRepo: !Ref GitHubRepo
+        SubnetId: !GetAtt VPCStack.Outputs.SubnetId
+        VpcId: !GetAtt VPCStack.Outputs.VpcId
+  
+  CustomResourceStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: SageMakerStack
+    Properties:
+      TemplateURL: customresource-stack.yaml
+      Parameters:
+        S3BucketName: !Ref S3BucketName
+        SageMakerDomainName: !Ref SageMakerDomainName
+        GitHubRepo: !Ref GitHubRepo
+        SubnetId: !GetAtt VPCStack.Outputs.SubnetId
+        VpcId: !GetAtt VPCStack.Outputs.VpcId
+
+  GlueStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: CustomResourceStack
+    Properties:
+      TemplateURL: glue-stack.yaml
+
+
+Outputs:
+  S3BucketNameOutput:
+    Value: !Ref S3BucketName
+    Description: Name of the created S3 bucket
+  SageMakerUserProfileRoleOutput:
+    Value: !GetAtt SageMakerStack.Outputs.SageMakerUserProfileRoleOutput
+    Description: ARN of the IAM role associated with the SageMaker User Profile
+  SageMakerDomainJupyterURLOutput:
+    Value: !GetAtt SageMakerStack.Outputs.SageMakerDomainJupyterURLOutput
+    Description: URL of the SageMaker Studio for accessing Jupyter notebooks
+
+

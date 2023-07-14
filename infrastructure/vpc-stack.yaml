@@ -1,0 +1,196 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  VpcName:
+    Type: String
+    Description: Name of the VPC
+  VpcRegion:
+    Type: String
+    Description: AWS Region for VPC creation
+  VpcStackName:
+    Type: String
+    Description: Name of the VPC stack
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Ref VpcName
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  DeleteStrandedSecurityGroupsFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+          - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+          - 'arn:aws:iam::aws:policy/AmazonEC2FullAccess'
+
+
+  DeleteStrandedSecurityGroups:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken: !GetAtt DeleteStrandedSecurityGroupsFunction.Arn
+      VpcId: !Ref VPC
+
+  DeleteStrandedSecurityGroupsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Role: !GetAtt DeleteStrandedSecurityGroupsFunctionRole.Arn
+      Handler: index.handler
+      Runtime: python3.8
+      Timeout: 900
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          import time
+
+          def delete_stranded_security_groups(event, context):
+              request_type = event['RequestType']
+              print('request_type')
+              print(request_type)
+              print('Event::')
+              print(event)
+              if request_type == 'Delete':
+                  vpc_id = event['ResourceProperties']['VpcId']
+                  print('VPC details ::')
+                  print(event['ResourceProperties']['VpcId'])
+                  ec2_client = boto3.client('ec2')
+                  response = ec2_client.describe_security_groups(
+                      Filters=[
+                          {'Name': 'vpc-id', 'Values': [vpc_id]}
+                      ]
+                  )
+
+                  security_groups = response['SecurityGroups']
+                  for sg in security_groups:
+                      group_name = sg['GroupName']
+                      group_id = sg['GroupId']
+                      try:
+                          print('security group:')
+                          print('Name:', group_name)
+                          print('ID:', group_id)
+                          if group_name != 'default':
+                              # Revoke ingress and egress rules based on rule ID
+                              response = ec2_client.describe_security_group_rules(
+                                  Filters=[
+                                      {'Name': 'group-id', 'Values': [group_id]}
+                                  ]
+                              )
+                              rules = response['SecurityGroupRules']
+                              for rule in rules:
+                                  rule_id = rule['SecurityGroupRuleId']
+                                  print('Revoking rule:', rule_id)
+                                  
+                                  try:
+                                    # Revoke ingress rule
+                                    print('Revoke Ingress Rule Id ::')
+                                    ec2_client.revoke_security_group_ingress(GroupId=group_id, SecurityGroupRuleIds=[rule_id]) 
+                                  except Exception as e:
+                                    print('Revoke Ingress Rule Id Exception ::')
+                                    print(e)
+                                  
+                                  
+                                  try:
+                                    # Revoke egress rule
+                                    print('Revoke Egress Rule Id ::')
+                                    ec2_client.revoke_security_group_egress(GroupId=group_id, SecurityGroupRuleIds=[rule_id])
+                                  except Exception as e:  
+                                    print('Revoke Egress Rule Id Exception ::')
+                                    print(e)
+                      except Exception as e:
+                          # Handle the exception if deletion fails
+                          print(str(e))
+
+                  for sg in security_groups:
+                      # Delete the security group
+                      group_id = sg['GroupId']
+                      try:
+                        print("Deleting security group start::")
+                        print(group_id)
+                        ec2_client.delete_security_group(GroupId=group_id)
+                      except Exception as e:
+                        print("Deleting security group Exception::")  
+                        print(e) 
+
+          def handler(event, context):
+              try:
+                  delete_stranded_security_groups(event, context)
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+              except Exception as e:
+                  print(e)
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": str(e)})
+
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.0.0/24
+      AvailabilityZone: !Select [0, Fn::GetAZs: !Ref 'AWS::Region'] 
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: PublicSubnet
+
+  PublicSubnetSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group for the public subnet
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - CidrIp: 73.209.144.92/32   # Replace YOUR_IP_ADDRESS with your actual IP address
+          IpProtocol: -1
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: -1
+
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+Outputs:
+  VpcId:
+    Value: !Ref VPC
+    Description: VPC ID
+  SubnetId:
+    Value: !Ref PublicSubnet
+    Description: Subnet ID
+  SecurityGroupId:
+    Value: !Ref PublicSubnetSecurityGroup
+    Description: Security Group ID for the public subnet

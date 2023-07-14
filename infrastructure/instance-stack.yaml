@@ -1,0 +1,95 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Description: Name of the S3 bucket to create
+  GitHubRepo:
+    Type: String
+    Description: URL of the GitHub repository to clone
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet ID for the SageMaker domain
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security Group ID for the EC2 instance
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Key pair name for SSH access
+  ImageId:
+    Type: String
+    Description: Amazon Linux 2023 AMI for the correct region
+
+Resources:
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      SubnetId: !Ref SubnetId
+      ImageId: !Ref ImageId
+      SecurityGroupIds:
+        - !Ref SecurityGroupId
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      KeyName: !Ref KeyName
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          
+          # Install Git LFS
+          sudo yum -y install git
+          wget https://github.com/git-lfs/git-lfs/releases/download/v2.13.3/git-lfs-linux-amd64-v2.13.3.tar.gz
+
+          # Extract the archive
+          sudo tar xzf git-lfs-linux-amd64-v2.13.3.tar.gz
+          sudo ./install.sh
+          
+          # Clone the GitHub repository
+          sudo git clone ${GitHubRepo}
+          
+          # Change to the repository directory
+          cd recommendation-engine-full-stack
+          
+          # Fetch and pull LFS objects
+          sudo git lfs fetch origin main
+          sudo git lfs pull origin main
+          cd data
+          
+          # Extract zip file
+          sudo unzip csv_files.zip
+          
+          # Remove unnecessary files/folders
+          sudo rm -rf __MACOSX/ csv_files.zip
+          
+          # Copy files to S3 bucket
+          aws s3 cp --recursive . s3://${S3BucketName}
+
+          # Terminate the EC2 instance
+          status_code=$(curl -s -o /dev/null -w "%{http_code}" http://169.254.169.254/latest/meta-data/)
+          if [[ "$status_code" -eq 200 ]]; then
+            export instance_id="$(curl -s http://169.254.169.254/latest/meta-data/instance-id)"
+          else
+            export instance_id="$(TOKEN=`curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"` && curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)"
+          fi
+          aws ec2 terminate-instances --instance-ids $instance_id 
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - Ref: EC2InstanceRole
+
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: MyEC2InstanceRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonEC2FullAccess

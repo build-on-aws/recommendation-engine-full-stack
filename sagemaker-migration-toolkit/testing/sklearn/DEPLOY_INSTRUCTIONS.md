@@ -1,0 +1,1 @@
+sed -i s@SAGEMAKER-ENDPOINT@<your sagemaker model endpoint name>@g localtest.sh

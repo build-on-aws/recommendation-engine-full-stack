@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MyFlix Recommendations</title>
+  <style>
+    .hero-banner {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 400px;
+  background-color: #e74c3c;
+  color: white;
+  text-align: center;
+  font-size: 36px;
+  font-weight: bold;
+  /* background-image: url('https://via.placeholder.com/1200x400/ffddcc/000000'); */
+  background-size: cover;
+  background-position: center;
+}
+
+.movie-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin: 20px;
+}
+
+.movie {
+  width: 30%;
+  margin-bottom: 20px;
+  background-color: #f5f5f5;
+  border-radius: 5px;
+  overflow: hidden;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+}
+
+.movie img {
+  width: 100%;
+  height: 300px;
+  object-fit: cover;
+}
+
+.movie-title {
+  padding: 10px;
+  font-size: 20px;
+  font-weight: bold;
+  text-align: center;
+  color: #2c3e50;
+}
+
+  </style>
+</head>
+<body>
+  <div class="hero-banner">
+    <h1>MyFlix Recommendations</h1>
+  </div>
+  <div>
+    <form id="myForm">
+      <table>
+        <tr>
+          <td>
+            <label for="startYear">Start Year:</label>
+            <input type="number" id="startyear" name="startYear">
+          </td>
+          <td>
+            <label for="runtimeMinutes">Runtime Minutes:</label>
+            <input type="number" id="runtimeMinutes" name="runtimeMinutes">
+          </td>
+          <td>
+            <label for="averageRating">Average Rating:</label>
+            <input type="number" id="averageRating" name="averageRating">
+          </td>
+           
+          <td>
+            <label for="numVotes">Number of Votes:</label>
+            <input type="number" id="numVotes" name="numVotes">
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <label for="Drama">Drama:</label>
+            <input type="checkbox" id="Drama" name="Drama" value="1">
+          </td>
+          <td>
+            <label for="Film-Noir">Film-Noir:</label>
+            <input type="checkbox" id="Film-Noir" name="Film-Noir" value="1">
+          </td>
+          <td>
+            <label for="Fantasy">Fantasy:</label>
+            <input type="checkbox" id="Fantasy" name="Fantasy" value="1">
+          </td>
+          <td>
+            <label for="Animation">Animation:</label>
+            <input type="checkbox" id="Animation" name="Animation" value="1">
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <label for="Family">Family:</label>
+            <input type="checkbox" id="Family" name="Family" value="1">
+          </td>
+          <td>
+            <label for="Documentary">Documentary:</label>
+            <input type="checkbox" id="Documentary" name="Documentary" value="1">
+          </td>
+          <td>
+            <label for="War">War:</label>
+            <input type="checkbox" id="War" name="War" value="1">
+          </td>
+          <td>
+            <label for="Sport">Sport:</label>
+            <input type="checkbox" id="Sport" name="Sport" value="1">
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <label for="Music">Music:</label>
+            <input type="checkbox" id="Music" name="Music" value="1">
+          </td>
+          <td>
+            <label for="Western">Western:</label>
+            <input type="checkbox" id="Western" name="Western" value="1">
+          </td>
+          <td>
+            <label for="Biography">Biography:</label>
+            <input type="checkbox" id="Biography" name="Biography" value="1">
+          </td>
+          <td>
+            <label for="Adventure">Adventure:</label>
+            <input type="checkbox" id="Adventure" name="Adventure" value="1">
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <label for="History">History:</label>
+            <input type="checkbox" id="History" name="History" value="1">
+          </td>
+          <td>
+            <label for="Mystery">Mystery:</label>
+            <input type="checkbox" id="Mystery" name="Mystery" value="1">
+          </td>
+          <td>
+            <label for="Sci-Fi">Sci-Fi:</label>
+            <input type="checkbox" id="Sci-Fi" name="Sci-Fi" value="1"><br>
+          </td>
+          <td>
+            <label for="Action">Action:</label>
+            <input type="checkbox" id="Action" name="Action" value="1">
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <label for="Crime">Crime:</label>
+            <input type="checkbox" id="Crime" name="Crime" value="1"><br>
+          </td>
+          <td>
+            <label for="Musical">Musical:</label>
+            <input type="checkbox" id="Musical" name="Musical" value="1">
+          </td>
+          <td>
+            <label for="Romance">Romance:</label>
+            <input type="checkbox" id="Romance" name="Romance" value="1"><br>
+          </td>
+          <td>
+            <label for="Comedy">Comedy:</label>
+            <input type="checkbox" id="Comedy" name="Comedy" value="1">
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <label for="Horror">Horror:</label>
+            <input type="checkbox" id="Horror" name="Horror" value="1"><br>
+          </td>
+          <td>
+            <label for="Thriller">Thriller:</label>
+            <input type="checkbox" id="Thriller" name="Thriller" value="1">
+          </td>
+        </tr>
+      </table>
+    
+      <input type="submit" value="Submit">
+    </form>
+    
+
+  </div>
+  <div class="movie-container"></div>
+
+  <script>
+    var myForm = document.getElementById("myForm");
+
+      myForm.addEventListener("submit", function(event) {
+        event.preventDefault(); // prevent the form from submitting normally
+
+        // convert the form data to a JavaScript object
+        var formData = new FormData(myForm);
+        var data = {};
+        for (var key of formData.keys()) {
+          data[key] = formData.getAll(key).length > 1 ? formData.getAll(key) : formData.get(key);
+        }
+
+        // set the Content-Type header to application/json
+        //this is for the clusters
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", "https://<abcdef>.execute-api.us-east-1.amazonaws.com/api", true);
+        xhr.setRequestHeader("Content-Type", "application/json");
+
+        // handle the response
+        xhr.onreadystatechange = function() {
+          if (xhr.readyState === 4 && xhr.status === 200) {
+                var response = JSON.parse(xhr.responseText);
+                console.log("Cluster No:: ");
+                console.log(response);
+
+                var xhr2 = new XMLHttpRequest();
+                xhr2.open("POST", "https://<ghijklmn>.execute-api.us-east-1.amazonaws.com/api", true); //for the top recommendations
+                xhr2.setRequestHeader("Content-Type", "application/json");
+                xhr2.onreadystatechange = function() {
+                  if (xhr2.readyState === 4 && xhr2.status === 200) {
+                        var response = JSON.parse(xhr2.responseText);
+                        // Get the column titles from the first data row
+                        const columnTitles = response.results[0].Data.map(item => item.VarCharValue);
+                        console.log("ColumnTitles",columnTitles)
+                        // Map the remaining rows to objects with the column titles as keys
+                        console.log("response.results",response.results.length)
+                        const data = [];
+                        for (let i = 1; i < response.results.length; i++) {
+                        data.push(response.results[i].Data.map(row => row.VarCharValue));
+                        }
+                        console.log(data)
+
+                        const movieContainer = document.querySelector('.movie-container');
+
+                        // Loop through the data and create a movie element for each row
+                        movieContainer.innerHTML = '';
+                        data.forEach(row => {
+                          const movie = document.createElement('div');
+                          movie.classList.add('movie');
+                          fetch(`https://source.unsplash.com/300x300/?${row[1]}`).then(response => {
+                              const image = document.createElement('img');
+                              image.src = response.url;
+                              image.alt = row[1];
+
+                              const title = document.createElement('div');
+                              title.classList.add('movie-title');
+                              title.textContent = row[1];
+
+                              movie.appendChild(image);
+                              movie.appendChild(title);
+                              movieContainer.appendChild(movie);
+                          });
+                          
+                        });
+                  }else{
+                    console.log("Error:", xhr2.status);
+                  }
+                }
+
+                // send the request
+                console.log("Data being sent::",response)
+                xhr2.send(JSON.stringify({ cluster: `${response}.0` }));
+                
+         
+          } else {
+            console.log("Error:", xhr.status);
+          }
+        };
+
+        // send the request
+        console.log("Data being sent::",data)
+        xhr.send(JSON.stringify(data));
+      });
+  </script>
+</body>
+</html>
